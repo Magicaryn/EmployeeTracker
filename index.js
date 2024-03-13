@@ -1,10 +1,48 @@
 const inquirer = require('inquirer');
 const fs = require('fs');
+const { Client } = require('pg');
 const clear = require('clear');
+const { resolve } = require('path');
 
 let departments = [];
 let roles = [];
 let employees = [];
+
+let employeeSqlQuery = 'INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES ';
+let roleSqlQuery = 'INSERT INTO role (role_id, title, salary, department) VALUES ';
+let departmentSqlQuery = 'INSERT INTO department (department_name) VALUES ';
+
+const client = new Client({
+    user: 'postgres',
+    host: 'localhost',
+    database: 'company',
+    password: 'jelly',
+    port: 5432,
+})
+
+client.connect()
+    .then(() => console.log('Connected to PostgreSQL database'))
+    .catch(err => console.error('Error connecting to PostgreSQL database:', err));
+
+//LANDING PAGE
+async function displayLandingPage(){
+    console.log('Welcome to your application!');
+    console.log('Conecting to database...');
+
+    try{
+        await client.connect();
+        console.log('Connected to postgreSQL databsase');
+
+        await executeSchema();
+
+
+        await displayMenu();
+    } catch {
+        console.error('Error:', error);
+        process.exit(1)
+    }
+}
+
 
 //main screen menu options
 function displayMenu() {
@@ -18,6 +56,35 @@ function displayMenu() {
 
     ]);
 };
+
+// schema call
+async function executeSchema() {
+    try {
+        await client.connect();
+        console.log('Connected to PostgreSQL database');
+
+        const schemaPath = path.join(__dirname, 'db/schema.sql');
+        const schema = fs.readFileSync(schemaPath, 'utf8');
+
+        await client.query(schema);
+        console.log('Schema executed successfully');
+    } catch (error) {
+        console.error('Error executing schema:', error)
+    }
+};
+
+//seeds call
+async function executeSeeds() {
+    try{
+        const seedsPath = path.join(__dirname, 'db/seeds.sql');
+        const seeds = fs.readFileSync(seedsPath, 'utf8');
+
+        await client.query(seeds);
+        console.log('Seeds executed successfully');
+    } catch (error) {
+        console.error('Error executing seeds:', error); 
+    }
+}
 
 async function main() {
     try {
@@ -68,87 +135,122 @@ async function main() {
                     shouldQuit = true;
                     return;
             }
+
         }
 
     } catch (error) {
-        console.error('error', error)
+        console.error('error', error);
+    } finally {
+        await client.end();
+        console.log('Connection to PostgreSQL database closed');
     }
 }
 //add department prompt
 async function addDepartment() {
     try {
-        const departmentData = await inquirer.prompt([
-            {
-                type: 'input',
-                message: 'What is the name of the department?',
-                name: 'newDepartment',
-            },
-        ])
+        let addMore = true;
+        while (addMore) {
+            const departmentData = await inquirer.prompt([
+                {
+                    type: 'input',
+                    message: 'What is the name of the department?',
+                    name: 'newDepartment',
+                },
+                {
+                    type: 'confirm',
+                    message: 'Would you like to add another department?',
+                    name: 'addMore',
+                    default: false,
+                }
+            ])
 
-        // if (departmentExists(departmentData.newDepartment)) {
-        //     console.log('Department already exists in the database!');
-        //     return;
-        // }
+            departments.push(departmentData.newDepartment);
 
-        departments.push(departmentData.newDepartment);
+            console.log(`Added ${departmentData.newDepartment} to the database!`);
 
-        console.log(`Added ${departmentData.newDepartment} to the database!`);
+            departmentSqlQuery += `(${departmentData.newDepartment})`;
 
-        const sqlStatement = `INSERT INTO department (department) VALUES ('${departmentData.newDepartment}')`;
-
-        fs.appendFileSync('seeds.sql', sqlStatement + ';\n');
+            if (departmentData.addMore) {
+                departmentSqlQuery += ',';
+            } else {
+                departmentSqlQuery += ';\n';
+                fs.appendFileSync('seeds.sql', departmentSqlQuery);
+                departmentSqlQuery = 'INSERT INTO department (department_name) VALUES';
+            }
+            addMore = departmentData.addMore;
+        }
+        main();
 
     } catch (error) {
         console.error('Error:', error);
     }
 }
+
 
 
 //add role
 async function addRole() {
-
     try {
-        const roleData = await inquirer.prompt([
-            {
-                type: 'input',
-                message: 'What is the name of the role?',
-                name: 'newRole',
-            },
+        let addMore = true
+        while (addMore) {
+            const roleData = await inquirer.prompt([
+                {
+                    type: 'input',
+                    message: 'What is the name of the role?',
+                    name: 'title',
+                },
 
-            {
-                type: 'input',
-                message: 'What is the salary of the role?',
-                name: 'salary',
-            },
+                {
+                    type: 'input',
+                    message: 'What is the salary of the role?',
+                    name: 'salary',
+                },
 
-            {
-                type: 'list',
-                message: 'Which department does the role belong to?',
-                name: 'departmentData',
-                choices: [`${departmentData}`],
-            },
+                {
+                    type: 'list',
+                    message: 'Which department does the role belong to?',
+                    name: 'departmentData',
+                    choices: [`${departments}`],
+                },
+                {
+                    type: 'confirm',
+                    message: 'Would you like to add another role?',
+                    name: 'addMore',
+                    default: false,
+                }
 
-        ]);
-        // if (roleExists(roleData.newRole)) {
-        //     console.log('Role already exists!');
-        //     return
-        // }
+            ]);
+            // if (roleExists(roleData.newRole)) {
+            //     console.log('Role already exists!');
+            //     return
+            // }
 
-        roles.push({
-            name: roleData.newRole,
-            salary: roleData.salary,
-            department: roleData.departmentData,
-        });
+            roles.push({
+                name: roleData.title,
+                salary: roleData.salary,
+                department: roleData.departmentData,
+            });
 
-        console.log(`Added ${response.newRole} to the database!`);
+            console.log(`Added ${response.title} to the database!`);
 
-        const sqlStatement = `INSERT INTO (role) VALUES (${roleData.newRole})`;
+            roleSqlQuery += `(${roleData.title})`;
 
-        fs.appendFileSync('seeds.sql', sqlStatement + ';\n')
+            if (roleData.addMore) {
+                roleSqlQuery += ',';
+            } else {
+                roleSqlQuery += ';\n';
+                fs.appendFileSync('seeds.sql', roleSqlQuery);
+                roleSqlQuery = 'INSERT INTO role (title, salary, department) VALUES';
+            }
+            addMore = roleData.addMore;
+        }
+        main();
+
     } catch (error) {
         console.error('Error:', error);
     }
 }
+
 
 // //add employee
 
@@ -172,7 +274,7 @@ async function addEmployee() {
                 type: 'list',
                 message: "What is the employee's role?",
                 name: 'employee_role',
-                choices: [`${roleData}`],
+                choices: [`${roles}`],
 
             },
 
@@ -180,7 +282,7 @@ async function addEmployee() {
                 type: 'list',
                 message: "Who is the employee's manager?",
                 name: 'manager',
-                choices: [`${employeeData}`]
+                choices: [`${employees}`]
             }
         ])
         // if (employeeExists(employeeData.addEmployee)) {
@@ -188,9 +290,7 @@ async function addEmployee() {
         //     return
         // }
 
-        employees.push({
-            first
-        });
+        employees.push(employeeData.newEmployee);
 
         console.log(`Added ${firstName} ${lastName} to the database!`);
 
@@ -232,4 +332,4 @@ async function addEmployee() {
 //     ;
 // }
 
-main();
+displayLandingPage();
