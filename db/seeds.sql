@@ -15,8 +15,3 @@ VALUES  ('payroll', 62000, 1),
 
 
 
-
-INSERT INTO employee (first_name, last_name, role_id, manager) 
-VALUES  ('John', 'Lennon', 1, 'The Man'),
-        ('Eren', 'Yeager', 4, 'YMIR'),
-        ('caryn', 'behnke', 5, 'Emma');
