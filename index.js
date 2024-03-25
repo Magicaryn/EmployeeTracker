@@ -1,9 +1,5 @@
 const inquirer = require('inquirer');
-const fs = require('fs');
 const { Client } = require('pg');
-const clear = require('clear');
-const consoleTable = require('console.table');
-const { table } = require('console');
 
 const client = new Client({
     user: 'postgres',
@@ -57,19 +53,6 @@ async function getEmployeeWithNone() {
         throw error;
     }
 }
-
-
-// function displayMenu() {
-//     return inquirer.prompt([
-//         {
-//             type: 'list',
-//             message: 'What would you like to do? (Use arrow Keys)',
-//             name: 'selection',
-//             choices: ['View All Employees', 'Add Employee', 'Update Employee Role', ' View All Roles', 'Add Role', 'View All Departments', 'Add Department', 'Quit'],
-//         }
-
-//     ]);
-// };
 
 async function main() {
     try {
@@ -129,7 +112,7 @@ async function main() {
                     console.log('');
                     shouldQuit = true;
                     break;
-                    
+
                 case 'Edit/Delete':
                     console.log('');
                     await editDelete();
@@ -178,6 +161,7 @@ async function addDepartment() {
             await client.query(query, values);
 
             console.log(`Added ${departmentData.newDepartment} to the database!`);
+            console.log('');
 
             if (!departmentData.addMore) {
                 break;
@@ -192,8 +176,18 @@ async function addDepartment() {
 //view dept
 async function viewDepartments() {
     try {
-        const { rows } = await client.query('SELECT * FROM department;');
-        console.log(consoleTable.getTable(rows));
+   const query = `
+   SELECT d.id AS department_name,
+   d.department_name AS department_name,
+   SUM(r.salary) AS total_salary
+   FROM department d
+   LEFT JOIN roles r ON d.id = r.department
+   LEFT JOIN employee e ON r.id = e.role_id
+   GROUP BY d.id, d.department_name
+   ORDER BY d.department_name;
+   `;
+   const {rows} = await client.query(query);
+   console.table(rows);
     } catch (error) {
         console.error('error:', error)
     };
@@ -243,6 +237,7 @@ async function addRole() {
             await client.query(query, values);
 
             console.log(`Added ${roleData.title} to the database!`);
+            console.log('');
 
             if (!roleData.addMore) {
                 break;
@@ -254,7 +249,6 @@ async function addRole() {
         console.error('Error:', error);
     }
 };
-
 
 //view roles
 async function viewAllRoles() {
@@ -277,7 +271,6 @@ async function viewAllRoles() {
 };
 
 //add employee
-
 async function addEmployee() {
 
     try {
@@ -325,7 +318,8 @@ async function addEmployee() {
 
             await client.query(query, values)
 
-            console.log(`Added ${employeeData.firstName} ${employeeData.lastName} to the database!`);
+            console.log(`Added ${employeeData.first_name} ${employeeData.last_name} to the database!`);
+            console.log('');
 
             if (!employeeData.addMore) {
                 break;
@@ -338,12 +332,22 @@ async function addEmployee() {
 
 };
 
-
-
 //view employees
 async function viewAllEmployees() {
+
+    const employeeMenu = await inquirer.prompt([
+        {
+            type: 'list',
+            message: 'How would you like to view the employees? View By:',
+            choices: ['all', 'department', 'manager'],
+            name: 'userListChoice'
+        }
+    ]);
     try {
-        const query = `
+        let query
+        switch (employeeMenu.userListChoice) {
+            case 'all':
+                query = `
         SELECT e1.id AS id,
                e1.first_name AS first,
                e1.last_name AS last,
@@ -355,12 +359,43 @@ async function viewAllEmployees() {
                LEFT JOIN employee e2 ON e1.manager = e2.id
                LEFT JOIN roles r ON e1.role_id = r.id;
         `;
+                break;
+            case 'manager':
+                query = `
+            SELECT e1.id AS employee_id,
+            e1.first_name AS employee_first,
+            e1.last_name AS employee_last,
+            e2.id AS manager_id,
+            e2.first_name AS manager_first,
+            e2.last_name AS manager_last
+            FROM employee e1
+            LEFT JOIN employee e2 ON e1.manager = e2.id
+            ORDER BY e2.id;
+         `;
+                break;
+            case 'department':
+                query = `
+        SELECT e.id AS employee_id,
+       e.first_name AS employee_first,
+       e.last_name AS employee_last,
+       r.title AS role_title,
+       d.department_name AS department_name
+FROM employee e
+LEFT JOIN roles r ON e.role_id = r.id
+LEFT JOIN department d ON r.department = d.id
+ORDER BY d.department_name;
+        `
+                break;
+            default:
+                console.error('Invalid option');
+                return;
+        }
         const { rows } = await client.query(query);
         console.table(rows);
     } catch (error) {
-        console.error('error viewing all employees:', error)
+        console.error('error viewing employees:', error)
     };
-    main();
+    await main();
 };
 
 //update role
@@ -374,20 +409,20 @@ async function editDelete() {
                 name: 'section',
             },
 
-            {    
+            {
                 type: 'list',
                 message: 'Would you like to edit or delete?',
                 choices: ['Edit', 'Delete'],
                 name: 'action',
-        },
+            },
         ]);
 
         let tableName;
         let columnName;
-        switch (functMenu.section){
+        switch (functMenu.section) {
             case 'Department':
                 tableName = 'department';
-                columnName = [department_name]
+                columnName = ['department_name']
                 break;
             case 'Roles':
                 tableName = 'roles';
@@ -402,49 +437,163 @@ async function editDelete() {
         };
 
 
-        if (functMenu.action === 'Edit'){
+        if (functMenu.action === 'Edit') {
 
-            const editMenu = await inquirer.prompt([
-                {
-                    type: 'list',
-                    message: `What would you like to edit in ${functMenu.section}?`,
-                    choices: columnName,
-                    name: 'columnName',
+            if (functMenu.section === 'Department') {
+                console.log(''),
+                    console.log('Please use add or delete'),
+                    console.log('')
+                await main();
+            }
+
+            else if (functMenu.section === 'Roles') {
+                console.log('')
+                console.log('Please use add or delete')
+                console.log('')
+                await main();
+            }
+
+            else if (functMenu.section === 'Employee') {
+                const employee = await getEmployee()
+                const editMenu = await inquirer.prompt([
+                    {
+                        type: 'list',
+                        message: `Which employee would you like to edit?`,
+                        choices: employee.map(employee => employee.name),
+                        name: 'employeeChange',
+                    },
+                    {
+                        type: 'list',
+                        message: `What would you like to change?`,
+                        choices: ['Employee_role', 'Employee_manager'],
+                        name: 'userChoice',
+                    }]);
+                if (editMenu.userChoice === 'Employee_role') {
+                    const employee = editMenu.employeeChange;
+                    const roles = await getRoles();
+
+                    const editRolePrompt = await inquirer.prompt([
+                        {
+                            type: 'list',
+                            message: 'What role would you like to assign to them?',
+                            choices: roles.map(role => ({ name: role.name, value: role.id })),
+                            name: 'roleChange',
+                        },
+                    ]);
+                    const roleChange = editRolePrompt.roleChange;
+
+                    const selectedEmployee = editMenu.employeeChange;
+                    const employeeId = selectedEmployee.value;
+
+                    const updateQuery = 'UPDATE employee SET role_id = $1 WHERE id = $2';
+                    const updateValues = [roleChange, employeeId];
+                    await client.query(updateQuery, updateValues);
+
+                    console.log('Employee role updated successfully!');
+                    console.log('');
                 }
-            ]);
-            
-            const newValue = await inquirer.prompt([
-                {
-                    type: 'input',
-                    message: `Enter new data for ${editOption.columnName}:`,
-                    name: 'newValue', 
-                },
-            ]);
+                else if (editMenu.userChoice === 'Employee_manager') {
 
-            console.log(`Edit record in the ${tableName} table complete`)
+                    const manager = await getEmployeeWithNone();
+                    const managerChoices = manager.map(mgr => ({ name: mgr.name, value: mgr.value }))
+
+                    const managerChangePrompt = await inquirer.prompt([
+                        {
+                            type: 'list',
+                            message: 'What manager would you like to assign to them?',
+                            choices: managerChoices.map(choice => choice.name),
+                            name: 'selectedManagerName',
+                        },
+                    ]);
+
+
+                    const selectedManagerName = managerChangePrompt.selectedManagerName;
+                    const selectedManager = managerChoices.find(choice => choice.name === selectedManagerName);
+                    const newManagerId = selectedManager.value;
+
+                    const selectedEmployeeName = editMenu.employeeChange;
+                    const selectedEmployee = employee.find(emp => emp.name === selectedEmployeeName)
+                    const employeeId = selectedEmployee ? selectedEmployee.value : null;
+
+
+                    const updateQuery = 'UPDATE employee SET manager = $1 WHERE id = $2';
+                    const updateValues = [newManagerId, employeeId];
+                    await client.query(updateQuery, updateValues);
+
+                    console.log('Employee role updated successfully!');
+                    console.log('')
+                }
+            }
 
         } else if (functMenu.action === 'Delete') {
-            const deleteMenu = await inquirer.prompt([
-                {
-                    type: 'list',
-                    message: `What would you like to delete in ${functMenu.section}?`,
-                    choices: columnName,
-                    name: 'columnName',
+            if (functMenu.section === 'Department') {
+
+                const department = await getDepartment();
+                const deleteMenu = await inquirer.prompt([
+                    {
+                        type: 'list',
+                        message: `Which department would you like to delete?`,
+                        choices: department.map(department => department.name),
+                        name: 'departmentName',
+                    }
+                ]);
+                const query = `DELETE FROM department WHERE department_name = $1`;
+                const values = [deleteMenu.departmentName];
+
+                await client.query(query, values);
+
+                console.log(`Record deleted from departments.`);
+                console.log('');
+            }
+            else if (functMenu.section === 'Roles') {
+
+                const roles = await getRoles();
+                const deleteMenu = await inquirer.prompt([
+                    {
+                        type: 'list',
+                        message: `Which role would you like to delete?`,
+                        choices: roles.map(roles => roles.name),
+                        name: 'rolesName',
+                    }
+                ]);
+                const query = `DELETE FROM roles WHERE title = $1`;
+                const values = [deleteMenu.rolesName];
+
+                await client.query(query, values);
+
+                console.log(`Record deleted from roles.`)
+                console.log('');
+            }
+            else if (functMenu.section === 'Employee') {
+
+                const employee = await getEmployee();
+                const deleteMenu = await inquirer.prompt([
+                    {
+                        type: 'list',
+                        message: `Which employee would you like to delete?`,
+                        choices: employee.map(employee => employee.name),
+                        name: 'employeeName',
+                    }
+                ]);
+                const selectedEmployee = employee.find(emp => emp.name === deleteMenu.employeeName)
+
+                if (selectedEmployee) {
+                    const employeeId = selectedEmployee.value;
+
+                    const query = `DELETE FROM employee WHERE id = $1`;
+                    const values = [employeeId];
+
+                    await client.query(query, values);
+
+                    console.log(`Record deleted from employees.`)
+                    console.log('');
                 }
-            ]);
-
-            const query = `DELETE FROM ${tableName} WHERE ${deleteMenu.columnName} = $1`;
-            const values = [deleteMenu.columnName];
-
-            await client.query(query, values);
-
-            console.log(`Record deleted from ${tableName}`)
-
+            }
         }
-    
-} catch (error) {
-    console.error('Error:', error);
-}; main();
+    } catch (error) {
+        console.error('Error:', error);
+    }
+    await main();
 }
 
 //quit application
